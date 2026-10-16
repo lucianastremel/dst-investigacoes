@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSST 10.2-001 · Investigação de Acidentes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="topo">
+    <div class="marca">
+      <span class="codigo">DSST 10.2-001</span>
+      <span class="nome">Registro e Investigação de Ocorrências</span>
+    </div>
+    <nav class="abas" role="tablist">
+      <button class="aba ativa" data-aba="form">Relatório</button>
+      <button class="aba" data-aba="painel">Painel</button>
+      <button class="aba" data-aba="config">Configurações</button>
+    </nav>
+  </header>
+
+  <!-- ===================== RELATÓRIO ===================== -->
+  <main id="aba-form" class="painel-aba">
+    <div class="barra-acoes">
+      <div class="info-registro">
+        <span id="lbl-numero" class="numero-pill">Novo relatório</span>
+        <span id="lbl-estado" class="estado"></span>
+      </div>
+      <div class="botoes">
+        <button class="btn" id="btn-novo">Novo</button>
+        <button class="btn" id="btn-exemplo" title="Exemplo de referência de como reportar">Carregar exemplo</button>
+        <button class="btn" id="btn-pdf">Gerar PDF</button>
+        <button class="btn primario" id="btn-salvar">Salvar no GitHub</button>
+      </div>
+    </div>
+
+    <div class="layout-form">
+      <aside class="indice">
+        <ol>
+          <li><a href="#s-identificacao">Identificação</a></li>
+          <li><a href="#s-dados">Dados da ocorrência</a></li>
+          <li><a href="#s-descricao">Descrição do fato</a></li>
+          <li><a href="#s-fotos">Fotos</a></li>
+          <li><a href="#s-lesoes">Lesões</a></li>
+          <li><a href="#s-ishikawa">Causa e efeito</a></li>
+          <li><a href="#s-porques">5 Porquês</a></li>
+          <li><a href="#s-classificacao">Classificação</a></li>
+          <li><a href="#s-imediatas">Ações imediatas</a></li>
+          <li><a href="#s-plano">Plano de ação</a></li>
+          <li><a href="#s-responsaveis">Responsáveis</a></li>
+          <li><a href="#s-parecer">Parecer e ciência</a></li>
+        </ol>
+        <div class="checagem-resumo" id="checagem-resumo"></div>
+      </aside>
+
+      <div class="secoes" id="form-secoes"><!-- renderizado por app.js --></div>
+
+      <aside class="checagem" id="checagem">
+        <h3>Checagem metodológica</h3>
+        <div id="checagem-lista"></div>
+      </aside>
+    </div>
+  </main>
+
+  <!-- ===================== PAINEL ===================== -->
+  <main id="aba-painel" class="painel-aba oculto">
+    <div class="barra-acoes">
+      <div class="filtros">
+        <input type="search" id="filtro-texto" placeholder="Buscar por nome, local, nº…">
+        <select id="filtro-ano"><option value="">Todos os anos</option></select>
+        <select id="filtro-tipo"><option value="">Todas as características</option></select>
+      </div>
+      <div class="botoes"><button class="btn primario" id="btn-atualizar">Atualizar</button></div>
+    </div>
+    <div id="painel-conteudo"><p class="vazio">Clique em “Atualizar” para carregar as ocorrências do repositório.</p></div>
+  </main>
+
+  <!-- ===================== CONFIG ===================== -->
+  <main id="aba-config" class="painel-aba oculto">
+    <section class="cartao">
+      <h2>Conexão com o GitHub</h2>
+      <p class="ajuda" id="cfg-modo-txt"></p>
+      <div class="grade g2">
+        <label>Proprietário (usuário/organização)<input id="cfg-owner"></label>
+        <label>Repositório de dados<input id="cfg-repo"></label>
+        <label>Branch<input id="cfg-branch"></label>
+        <label>Pasta<input id="cfg-pasta"></label>
+      </div>
+      <div class="grade g2" id="cfg-token-box">
+        <label>Token do GitHub (fine-grained, só Contents: leitura e escrita)
+          <input id="cfg-token" type="password" autocomplete="off" placeholder="github_pat_…"></label>
+      </div>
+      <div class="grade g2" id="cfg-chave-box">
+        <label>Chave de leitura do SESMT (para abrir relatórios e usar o painel)
+          <input id="cfg-chave" type="password" autocomplete="off"></label>
+      </div>
+      <p class="ajuda">O token e a chave ficam guardados apenas neste navegador.</p>
+      <div class="botoes">
+        <button class="btn primario" id="btn-cfg-salvar">Salvar configurações</button>
+        <button class="btn" id="btn-cfg-testar">Testar conexão</button>
+      </div>
+      <p id="cfg-resultado" class="resultado"></p>
+    </section>
+  </main>
+</div>
+
+<!-- Impressão / PDF -->
+<div id="impressao"></div>
+
+<!-- Assinatura -->
+<dialog id="dlg-assinatura">
+  <h3>Assinatura</h3>
+  <p class="ajuda" id="assinatura-quem"></p>
+  <canvas id="canvas-assinatura" width="560" height="200"></canvas>
+  <div class="botoes">
+    <button class="btn" id="btn-ass-limpar">Limpar</button>
+    <button class="btn" id="btn-ass-cancelar">Cancelar</button>
+    <button class="btn primario" id="btn-ass-ok">Confirmar</button>
+  </div>
+</dialog>
+
+<div id="toast" role="status"></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
