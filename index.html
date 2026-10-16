@@ -71,9 +71,14 @@
       <div class="filtros">
         <input type="search" id="filtro-texto" placeholder="Buscar por nome, local, nº…">
         <select id="filtro-ano"><option value="">Todos os anos</option></select>
+        <select id="filtro-filial"><option value="">Todas as filiais</option><option>Filial 01</option><option>Filial 02</option><option>Filial 03</option></select>
         <select id="filtro-tipo"><option value="">Todas as características</option></select>
       </div>
-      <div class="botoes"><button class="btn primario" id="btn-atualizar">Atualizar</button></div>
+      <div class="botoes">
+        <button class="btn" id="btn-hht">Lançar HHT</button>
+        <button class="btn" id="btn-excel">Exportar para Excel</button>
+        <button class="btn primario" id="btn-atualizar">Atualizar</button>
+      </div>
     </div>
     <div id="painel-conteudo"><p class="vazio">Clique em “Atualizar” para carregar as ocorrências do repositório.</p></div>
   </main>
@@ -125,6 +130,7 @@
 <div id="toast" role="status"></div>
 
 <script src="config.js"></script>
+<script src="xlsx-mini.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

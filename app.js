@@ -77,7 +77,8 @@
       caracteristica: "",
       caracteristicaOutros: "",
       ocorrencia: "",
-      dados: { nome: "", matricula: "", funcao: "", local: "", lider: "", data: "", hora: "", reincidente: "" },
+      dados: { nome: "", matricula: "", funcao: "", filial: "", local: "", lider: "", data: "", hora: "", reincidente: "" },
+      afastamento: { diasPerdidos: "", diasDebitados: "", dataRetorno: "", cat: "" },
       relato: { atividade: "", primeiroDesvio: "", intervencoes: "", evento: "", mecanismo: "", consequencia: "" },
       descricao: "",
       fotos: [],
@@ -101,6 +102,12 @@
     };
   }
 
+  function mesclar(d) {
+    const base = novoRelatorio(); const r = Object.assign(base, d);
+    r.dados = Object.assign(novoRelatorio().dados, d.dados || {});
+    r.afastamento = Object.assign(novoRelatorio().afastamento, d.afastamento || {});
+    return r;
+  }
   let inv = novoRelatorio();
   let sujo = false;
 
@@ -152,7 +159,8 @@
         ${campo("Nome", "dados.nome")}
         ${campo("Matrícula", "dados.matricula")}
         ${campo("Função", "dados.funcao")}
-        ${campo("Local", "dados.local")}
+        ${select("Filial", "dados.filial", ["", "Filial 01", "Filial 02", "Filial 03"])}
+        ${campo("Local / setor", "dados.local")}
         ${campo("Líder", "dados.lider")}
         <div class="grade g2 sem-margem">
           ${campo("Data", "dados.data", 'type="date"')}
@@ -197,7 +205,15 @@
         ${select("Lado", "lesoes.lado", ["", "Direito", "Esquerdo", "Ambos", "Não se aplica"])}
         ${select("Natureza da lesão", "lesoes.natureza", [""].concat(NATUREZAS))}
         ${campo("Observação", "lesoes.obs", 'placeholder="ex.: dedo mínimo da mão direita"')}
-      </div>`));
+      </div>
+      <h4 class="sub">Afastamento e gravidade (NBR 14280)</h4>
+      <div class="grade g4">
+        ${campo("Dias perdidos", "afastamento.diasPerdidos", 'type="number" min="0" step="1"')}
+        ${campo("Dias debitados", "afastamento.diasDebitados", 'type="number" min="0" step="1"')}
+        ${campo("Data de retorno", "afastamento.dataRetorno", 'type="date"')}
+        ${select("CAT emitida", "afastamento.cat", ["", "Sim", "Não", "Não se aplica"])}
+      </div>
+      <p class="ajuda">Dias perdidos: dias corridos de afastamento, a partir do dia seguinte ao acidente até o dia anterior ao retorno. Dias debitados: somente para morte ou incapacidade permanente, conforme a tabela da NBR 14280 (morte = 6.000 dias). Esses números entram no cálculo da taxa de gravidade.</p>`));
 
     s.push(secao("s-ishikawa", "6", "Diagrama de causa e efeito", `
       <div class="ishikawa">
@@ -272,6 +288,15 @@
     carregarFotosPendentes();
   }
 
+  // Regra da empresa: matrícula iniciada por 03 = Filial 03; iniciada por 2 = Filial 02; demais = Filial 01
+  function filialPelaMatricula(m) {
+    const v = String(m || "").trim(); if (!v) return "";
+    if (v.startsWith("03")) return "Filial 03";
+    if (v.startsWith("2")) return "Filial 02";
+    return "Filial 01";
+  }
+  function filialDe(d) { return (d.dados && d.dados.filial) || filialPelaMatricula(d.dados && d.dados.matricula) || "Filial 01"; }
+
   function slug(t) { return t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-"); }
 
   function tabelaAcoes(chave, completo) {
@@ -329,6 +354,11 @@
       if (el.dataset.bind) {
         if (el.type === "radio" && !el.checked) return;
         setPath(inv, el.dataset.bind, el.value);
+        if (el.dataset.bind === "dados.matricula" && !inv.dados._filialManual) {
+          const f = filialPelaMatricula(el.value); inv.dados.filial = f;
+          const sel = $('[data-bind="dados.filial"]'); if (sel) sel.value = f;
+        }
+        if (el.dataset.bind === "dados.filial") inv.dados._filialManual = true;
         marcarSujo();
       }
     });
@@ -531,6 +561,14 @@
     if (plano.some((a) => /^Cadeia/.test(a.causa)) && cadeiasSemAcao.length)
       add("info", "s-plano", "Cadeia(s) sem ação vinculada: " + cadeiasSemAcao.map((c) => String.fromCharCode(65 + inv.cadeias.indexOf(c))).join(", ") + ".");
 
+    // Afastamento
+    const af = inv.afastamento || {};
+    if (inv.caracteristica === "Acidente com afastamento" && !(+af.diasPerdidos > 0) && !(+af.diasDebitados > 0))
+      add("alerta", "s-lesoes", "Acidente com afastamento sem dias perdidos informados — necessário para a taxa de gravidade.");
+    if ((+af.diasPerdidos > 0) && inv.caracteristica && inv.caracteristica !== "Acidente com afastamento" && inv.caracteristica !== "Acidente de trânsito")
+      add("alerta", "s-lesoes", "Há dias perdidos, mas a característica não está como “Acidente com afastamento”.");
+    if (!inv.dados.filial) add("info", "s-dados", "Filial não informada.");
+
     // Identificação
     if (!inv.numero) add("info", "s-identificacao", "Nº da ocorrência não informado.");
     if (!inv.caracteristica) add("alerta", "s-identificacao", "Característica da situação adversa não marcada.");
@@ -539,7 +577,7 @@
   }
 
   const NOMES_SECAO = { "s-identificacao": "Identificação", "s-dados": "Dados", "s-descricao": "Descrição", "s-ishikawa": "Causa e efeito",
-    "s-porques": "5 Porquês", "s-classificacao": "Classificação", "s-plano": "Plano de ação" };
+    "s-porques": "5 Porquês", "s-classificacao": "Classificação", "s-plano": "Plano de ação", "s-lesoes": "Lesões / afastamento" };
 
   function checar() {
     const lista = regras();
@@ -663,7 +701,7 @@
     if (sujo && !confirm("Há alterações não salvas. Abrir outro relatório mesmo assim?")) return;
     try {
       const { dados, sha } = await Store.lerJson(path);
-      inv = Object.assign(novoRelatorio(), dados);
+      inv = mesclar(dados);
       inv.meta = Object.assign({}, inv.meta, { sha });
       sujo = false; trocarAba("form"); render(); window.scrollTo(0, 0);
     } catch (e) { toast(e.message, "erro"); }
@@ -671,70 +709,252 @@
 
   function salvarRascunho() { const c = clone(inv); LS.set("dsst_rascunho", JSON.stringify(c)); }
 
-  // ------------------------------------------------------------------ painel
+  // ------------------------------------------------------------------ painel e indicadores
   let cacheOcorr = [];
+  let hht = {}; let hhtSha = "";
+  const FILIAIS = ["Filial 01", "Filial 02", "Filial 03"];
+  const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  const fmtN = (v, c = 0) => v == null || isNaN(v) ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: c, maximumFractionDigits: c });
+  const num = (v) => { const n = parseFloat(String(v == null ? "" : v).replace(",", ".")); return isNaN(n) ? 0 : n; };
+  const ehCPT = (d) => d.caracteristica === "Acidente com afastamento" || num((d.afastamento || {}).diasPerdidos) > 0 || num((d.afastamento || {}).diasDebitados) > 0;
+  const ehSPT = (d) => !ehCPT(d) && d.caracteristica === "Acidente sem afastamento";
+  const diasD = (d) => num((d.afastamento || {}).diasPerdidos) + num((d.afastamento || {}).diasDebitados);
+  const dataDe = (d) => (d.dados && d.dados.data) || "";
+
   async function carregarPainel() {
     const box = $("#painel-conteudo"); box.innerHTML = `<p class="vazio">Carregando…</p>`;
     try {
       const itens = (await Store.listar(dirOcorr())).filter((i) => i.name.endsWith(".json"));
       const res = []; const lote = 6;
       for (let i = 0; i < itens.length; i += lote) {
-        const parte = await Promise.all(itens.slice(i, i + lote).map((it) => Store.lerJson(it.path).then((r) => ({ path: it.path, d: r.dados })).catch(() => null)));
+        const parte = await Promise.all(itens.slice(i, i + lote).map((it) => Store.lerJson(it.path).then((r) => ({ path: it.path, d: mesclar(r.dados) })).catch(() => null)));
         res.push(...parte.filter(Boolean));
       }
       cacheOcorr = res;
-      const anos = [...new Set(res.map((r) => (r.d.dados && r.d.dados.data || "").slice(0, 4)).filter(Boolean))].sort().reverse();
-      $("#filtro-ano").innerHTML = `<option value="">Todos os anos</option>` + anos.map((a) => `<option>${a}</option>`).join("");
+      try { const h = await Store.lerJson(`${cfg().pasta}/hht.json`); hht = h.dados || {}; hhtSha = h.sha; }
+      catch (e) { if (e.status !== 404) throw e; hht = {}; hhtSha = ""; }
+      const anoAtual = String(new Date().getFullYear());
+      const anos = [...new Set(res.map((r) => dataDe(r.d).slice(0, 4)).filter(Boolean).concat(Object.keys(hht), [anoAtual]))].sort().reverse();
+      const anoSel = $("#filtro-ano").value;
+      $("#filtro-ano").innerHTML = `<option value="">Todos os anos</option>` + anos.map((a) => `<option ${a === (anoSel || anoAtual) ? "selected" : ""}>${a}</option>`).join("");
       $("#filtro-tipo").innerHTML = `<option value="">Todas as características</option>` + CARACTERISTICAS.map((a) => `<option>${a}</option>`).join("");
       desenharPainel();
     } catch (e) { box.innerHTML = `<p class="vazio erro">${esc(e.message)}</p>`; }
   }
 
-  function desenharPainel() {
-    const txt = ($("#filtro-texto").value || "").toLowerCase(); const ano = $("#filtro-ano").value; const tipo = $("#filtro-tipo").value;
-    const lista = cacheOcorr.filter(({ d }) => {
+  function filtrados() {
+    const txt = ($("#filtro-texto").value || "").toLowerCase(); const ano = $("#filtro-ano").value;
+    const tipo = $("#filtro-tipo").value; const fil = $("#filtro-filial").value;
+    return cacheOcorr.filter(({ d }) => {
       const dd = d.dados || {};
-      if (ano && !(dd.data || "").startsWith(ano)) return false;
+      if (ano && !dataDe(d).startsWith(ano)) return false;
       if (tipo && d.caracteristica !== tipo) return false;
-      if (txt && ![d.numero, dd.nome, dd.local, dd.lider, d.ocorrencia].join(" ").toLowerCase().includes(txt)) return false;
+      if (fil && filialDe(d) !== fil) return false;
+      if (txt && ![d.numero, dd.nome, dd.local, dd.lider, d.ocorrencia, dd.matricula].join(" ").toLowerCase().includes(txt)) return false;
       return true;
-    }).sort((a, b) => ((b.d.dados || {}).data || "").localeCompare((a.d.dados || {}).data || ""));
+    }).sort((a, b) => dataDe(b.d).localeCompare(dataDe(a.d)));
+  }
 
-    const h = hoje(); let abertas = 0, vencidas = 0, concluidas = 0; const vencLista = [];
-    const porTipo = {};
+  function hhtDe(ano, mes, fil) {
+    const m = String(mes).padStart(2, "0"); const a = hht[ano] || {};
+    const lista = fil ? [fil] : FILIAIS; let soma = 0; let algum = false;
+    lista.forEach((f) => { const v = a[f] && a[f][m]; if (v !== undefined && v !== "" && num(v) > 0) { soma += num(v); algum = true; } });
+    return algum ? soma : null;
+  }
+
+  function taxasAno(ano, fil) {
+    const base = cacheOcorr.map((x) => x.d).filter((d) => dataDe(d).startsWith(ano) && (!fil || filialDe(d) === fil));
+    const linhas = MESES.map((nome, i) => {
+      const mm = String(i + 1).padStart(2, "0");
+      const doMes = base.filter((d) => dataDe(d).slice(5, 7) === mm);
+      const h = hhtDe(ano, i + 1, fil);
+      const cpt = doMes.filter(ehCPT).length, spt = doMes.filter(ehSPT).length, dias = doMes.reduce((s, d) => s + diasD(d), 0);
+      return { nome, h, cpt, spt, dias, tfc: h ? cpt * 1e6 / h : null, tfs: h ? spt * 1e6 / h : null, tg: h ? dias * 1e6 / h : null };
+    });
+    const comH = linhas.filter((l) => l.h);
+    const H = comH.reduce((s, l) => s + l.h, 0);
+    const tot = { nome: "Acumulado", h: H || null, cpt: linhas.reduce((s, l) => s + l.cpt, 0), spt: linhas.reduce((s, l) => s + l.spt, 0), dias: linhas.reduce((s, l) => s + l.dias, 0) };
+    // acumulado considera só os meses com HHT lançado, para não distorcer a taxa
+    const cptH = comH.reduce((s, l) => s + l.cpt, 0), sptH = comH.reduce((s, l) => s + l.spt, 0), diasH = comH.reduce((s, l) => s + l.dias, 0);
+    Object.assign(tot, { tfc: H ? cptH * 1e6 / H : null, tfs: H ? sptH * 1e6 / H : null, tg: H ? diasH * 1e6 / H : null, mesesSemHHT: 12 - comH.length });
+    return { linhas, tot };
+  }
+
+  function grafBarras(titulo, pares, opt = {}) {
+    const lista = pares.filter(([, v]) => v > 0).sort((a, b) => opt.manterOrdem ? 0 : b[1] - a[1]).slice(0, opt.max || 10);
+    const max = Math.max(1, ...lista.map(([, v]) => v));
+    return `<div class="grafico"><h3>${titulo}</h3>${lista.length ? lista.map(([r, v]) => `
+      <div class="barra-linha"><span class="rot" title="${esc(r)}">${esc(r)}</span>
+      <span class="trilho"><span class="barra" style="width:${(v / max) * 100}%"></span></span><b>${fmtN(v)}</b></div>`).join("")
+      : `<p class="vazio pequeno">Sem dados no filtro.</p>`}</div>`;
+  }
+  function grafMeses(titulo, valores) {
+    const max = Math.max(1, ...valores);
+    return `<div class="grafico largo"><h3>${titulo}</h3><div class="colunas">${valores.map((v, i) => `
+      <div class="col"><b>${v || ""}</b><span class="coluna" style="height:${(v / max) * 100}%"></span><small>${MESES[i]}</small></div>`).join("")}</div></div>`;
+  }
+  function contar(lista, fn) { const m = {}; lista.forEach((x) => [].concat(fn(x)).filter(Boolean).forEach((k) => (m[k] = (m[k] || 0) + 1))); return Object.entries(m); }
+
+  function desenharPainel() {
+    const lista = filtrados(); const ds = lista.map((x) => x.d);
+    const ano = $("#filtro-ano").value; const fil = $("#filtro-filial").value;
+    const h = hoje(); let abertas = 0, vencidas = 0, concluidas = 0; const vencLista = []; const statusCont = {};
+    ds.forEach((d) => (d.plano || []).filter((a) => (a.oque || "").trim()).forEach((a) => {
+      const st = a.status || "Sem status"; statusCont[st] = (statusCont[st] || 0) + 1;
+      if (a.status === "Concluído") concluidas++; else { abertas++; if (a.quando && a.quando < h) vencidas++; }
+    }));
     const linhas = lista.map(({ path, d }) => {
       const plano = (d.plano || []).filter((a) => (a.oque || "").trim());
       const ab = plano.filter((a) => a.status !== "Concluído"); const venc = ab.filter((a) => a.quando && a.quando < h);
-      abertas += ab.length; vencidas += venc.length; concluidas += plano.length - ab.length;
       venc.forEach((a) => vencLista.push({ n: d.numero, path, a }));
-      porTipo[d.caracteristica || "Não informada"] = (porTipo[d.caracteristica || "Não informada"] || 0) + 1;
-      const salvoInv = inv; inv = Object.assign(novoRelatorio(), d); const chk = regras(); inv = salvoInv;
+      const salvoInv = inv; inv = d; const chk = regras(); inv = salvoInv;
       const erros = chk.filter((x) => x.nivel === "erro").length; const alertas = chk.filter((x) => x.nivel === "alerta").length;
       const pend = !d.parecer || !d.parecer.eficaz;
       return `<tr>
-        <td class="mono">${esc(d.numero)}</td><td>${dataBR((d.dados || {}).data)}</td>
+        <td class="mono">${esc(d.numero)}</td><td>${dataBR(dataDe(d))}</td><td>${esc(filialDe(d).replace("Filial ", "F"))}</td>
         <td>${esc((d.dados || {}).nome)}</td><td>${esc((d.dados || {}).local)}</td>
-        <td>${esc(d.caracteristica)}</td><td>${esc(d.ocorrencia)}</td>
+        <td>${esc(d.caracteristica)}</td><td>${esc(d.ocorrencia)}</td><td class="num">${diasD(d) ? fmtN(diasD(d)) : ""}</td>
         <td class="num">${plano.length - ab.length}/${plano.length}${venc.length ? ` <span class="tag erro">${venc.length} vencida(s)</span>` : ""}</td>
         <td>${erros ? `<span class="tag erro">${erros} erro(s)</span>` : ""}${alertas ? ` <span class="tag alerta">${alertas}</span>` : ""}${!erros && !alertas ? `<span class="tag ok">ok</span>` : ""}</td>
         <td>${pend ? `<span class="tag">pendente</span>` : `<span class="tag ok">${esc(d.parecer.eficaz)}</span>`}</td>
         <td><button class="btn mini" data-abrir="${esc(path)}">Abrir</button></td></tr>`;
     }).join("");
 
+    // taxas
+    const anoTx = ano || String(new Date().getFullYear());
+    const tx = taxasAno(anoTx, fil);
+    const tabelaTaxas = `<section class="cartao"><h2>Taxas de frequência e gravidade — ${anoTx}${fil ? " · " + fil : " · todas as filiais"}</h2>
+      <p class="ajuda">Cálculo conforme NBR 14280: TF = nº de acidentados × 1.000.000 ÷ HHT; TG = (dias perdidos + dias debitados) × 1.000.000 ÷ HHT. Sem HHT lançado no mês, a taxa não é calculada. Os dias do acidente são lançados no mês da ocorrência.</p>
+      ${tx.tot.mesesSemHHT === 12 ? `<div class="aviso">Nenhuma hora-homem trabalhada (HHT) lançada para ${anoTx}. Clique em “Lançar HHT” para informar as horas de cada mês.</div>` : ""}
+      <div class="rolagem"><table class="tabela taxas"><thead><tr><th>Mês</th><th>HHT</th><th>Acid. c/ afast.</th><th>Acid. s/ afast.</th><th>Dias perd.+deb.</th><th>TF c/ afast.</th><th>TF s/ afast.</th><th>TG</th></tr></thead><tbody>
+      ${tx.linhas.concat([tx.tot]).map((l) => `<tr class="${l.nome === "Acumulado" ? "total" : ""}"><td>${l.nome}</td><td class="num">${l.h ? fmtN(l.h) : "—"}</td><td class="num">${l.cpt}</td><td class="num">${l.spt}</td><td class="num">${fmtN(l.dias)}</td><td class="num">${fmtN(l.tfc, 2)}</td><td class="num">${fmtN(l.tfs, 2)}</td><td class="num">${fmtN(l.tg, 2)}</td></tr>`).join("")}
+      </tbody></table></div>
+      ${tx.tot.mesesSemHHT > 0 && tx.tot.mesesSemHHT < 12 ? `<p class="ajuda">O acumulado considera apenas os ${12 - tx.tot.mesesSemHHT} mês(es) com HHT lançado.</p>` : ""}</section>`;
+
+    const porMes = MESES.map((_, i) => ds.filter((d) => dataDe(d).startsWith(anoTx + "-" + String(i + 1).padStart(2, "0"))).length);
+    const graficos = `<section class="cartao"><h2>Indicadores das ocorrências filtradas</h2><div class="graficos">
+      ${grafMeses(`Ocorrências por mês — ${anoTx}`, porMes)}
+      ${grafBarras("Por característica", contar(ds, (d) => d.caracteristica || "Não informada"))}
+      ${grafBarras("Por filial", contar(ds, (d) => filialDe(d)), { manterOrdem: true })}
+      ${grafBarras("Por local / setor", contar(ds, (d) => ((d.dados || {}).local || "").trim() || "Não informado"))}
+      ${grafBarras("Por parte do corpo", contar(ds, (d) => (d.lesoes || {}).partes || []))}
+      ${grafBarras("Por natureza da lesão", contar(ds, (d) => (d.lesoes || {}).natureza))}
+      ${grafBarras("Fatores do diagrama de causa e efeito mais marcados", contar(ds, (d) => Object.keys((d.ishikawa || {}).itens || {}).map((k) => k.replace("|", ": "))), { max: 10 })}
+      ${grafBarras("Categorias do diagrama (6M)", contar(ds, (d) => [...new Set(Object.keys((d.ishikawa || {}).itens || {}).map((k) => k.split("|")[0]))]))}
+      ${grafBarras("Ações do plano por status", STATUS.concat(["Sem status"]).map((s) => [s, statusCont[s] || 0]), { manterOrdem: true })}
+      ${grafBarras("Ações por nível de controle", contar(ds, (d) => (d.plano || []).filter((a) => a.oque).map((a) => a.hierarquia || "Não informado")))}
+    </div></section>`;
+
     $("#painel-conteudo").innerHTML = `
+      <div id="hht-box"></div>
       <div class="kpis">
-        <div class="kpi"><span>Ocorrências</span><b>${lista.length}</b></div>
+        <div class="kpi"><span>Ocorrências</span><b>${ds.length}</b></div>
+        <div class="kpi"><span>Com afastamento</span><b>${ds.filter(ehCPT).length}</b></div>
+        <div class="kpi"><span>Sem afastamento</span><b>${ds.filter(ehSPT).length}</b></div>
+        <div class="kpi"><span>Dias perdidos + debitados</span><b>${fmtN(ds.reduce((s, d) => s + diasD(d), 0))}</b></div>
         <div class="kpi"><span>Ações em aberto</span><b>${abertas}</b></div>
         <div class="kpi ${vencidas ? "ruim" : ""}"><span>Ações vencidas</span><b>${vencidas}</b></div>
         <div class="kpi"><span>Ações concluídas</span><b>${concluidas}</b></div>
+        <div class="kpi"><span>Eficácia pendente</span><b>${ds.filter((d) => !d.parecer || !d.parecer.eficaz).length}</b></div>
       </div>
-      <div class="por-tipo">${Object.entries(porTipo).map(([k, v]) => `<span class="tag">${esc(k)}: <b>${v}</b></span>`).join("")}</div>
-      ${vencLista.length ? `<section class="cartao"><h2>Ações vencidas</h2><table class="tabela"><thead><tr><th>Nº</th><th>Ação</th><th>Quem</th><th>Prazo</th><th>Status</th></tr></thead><tbody>
+      ${tabelaTaxas}
+      ${graficos}
+      ${vencLista.length ? `<section class="cartao"><h2>Ações vencidas</h2><div class="rolagem"><table class="tabela"><thead><tr><th>Nº</th><th>Ação</th><th>Quem</th><th>Prazo</th><th>Status</th></tr></thead><tbody>
         ${vencLista.sort((a, b) => a.a.quando.localeCompare(b.a.quando)).map((v) => `<tr><td class="mono"><a href="#" data-abrir="${esc(v.path)}">${esc(v.n)}</a></td><td>${esc(v.a.oque)}</td><td>${esc(v.a.quem)}</td><td>${dataBR(v.a.quando)}</td><td>${esc(v.a.status)}</td></tr>`).join("")}
-        </tbody></table></section>` : ""}
+        </tbody></table></div></section>` : ""}
       <section class="cartao"><h2>Ocorrências</h2>
-      ${lista.length ? `<div class="rolagem"><table class="tabela painel"><thead><tr><th>Nº</th><th>Data</th><th>Nome</th><th>Local</th><th>Característica</th><th>Ocorrência</th><th>Ações concl.</th><th>Checagem</th><th>Eficácia</th><th></th></tr></thead><tbody>${linhas}</tbody></table></div>`
+      ${lista.length ? `<div class="rolagem"><table class="tabela painel"><thead><tr><th>Nº</th><th>Data</th><th>Filial</th><th>Nome</th><th>Local</th><th>Característica</th><th>Ocorrência</th><th>Dias</th><th>Ações concl.</th><th>Checagem</th><th>Eficácia</th><th></th></tr></thead><tbody>${linhas}</tbody></table></div>`
         : `<p class="vazio">Nenhuma ocorrência encontrada.</p>`}</section>`;
+  }
+
+  // ---- lançamento de HHT
+  function abrirHHT() {
+    if (!cacheOcorr.length && !Object.keys(hht).length && !$("#hht-box")) return toast("Clique em “Atualizar” primeiro.", "erro");
+    const ano = $("#filtro-ano").value || String(new Date().getFullYear());
+    const a = hht[ano] || {};
+    $("#hht-box").innerHTML = `<section class="cartao hht"><h2>Horas-homem trabalhadas (HHT) — ${ano}</h2>
+      <p class="ajuda">Informe o total de horas trabalhadas no mês por todos os empregados da filial (normalmente fornecido pelo RH/folha). Deixe em branco os meses ainda não fechados. Para outro ano, troque o filtro de ano.</p>
+      <div class="rolagem"><table class="tabela"><thead><tr><th>Filial</th>${MESES.map((m) => `<th>${m}</th>`).join("")}</tr></thead><tbody>
+      ${FILIAIS.map((f) => `<tr><td><b>${f}</b></td>${MESES.map((_, i) => { const mm = String(i + 1).padStart(2, "0"); return `<td><input class="hht-in" inputmode="numeric" data-f="${f}" data-m="${mm}" value="${esc((a[f] || {})[mm] || "")}"></td>`; }).join("")}</tr>`).join("")}
+      </tbody></table></div>
+      <div class="linha-botoes"><button class="btn primario" id="btn-hht-salvar">Salvar HHT</button><button class="btn" id="btn-hht-fechar">Fechar</button></div></section>`;
+    $("#btn-hht-fechar").onclick = () => ($("#hht-box").innerHTML = "");
+    $("#btn-hht-salvar").onclick = async () => {
+      const novo = clone(hht); novo[ano] = {};
+      $$(".hht-in").forEach((el) => { const v = el.value.replace(/\./g, "").replace(",", ".").trim(); if (v) { (novo[ano][el.dataset.f] = novo[ano][el.dataset.f] || {})[el.dataset.m] = num(v); } });
+      try {
+        const sha = await Store.gravar(`${cfg().pasta}/hht.json`, b64DeTexto(JSON.stringify(novo, null, 2)), hhtSha || null, `HHT ${ano}`);
+        hht = novo; hhtSha = sha || ""; toast("HHT salvo.", "ok"); desenharPainel();
+      } catch (e) { toast(e.message, "erro"); }
+    };
+    $("#hht-box").scrollIntoView({ behavior: "smooth" });
+  }
+
+  // ---- exportação para Excel (gerador próprio: xlsx-mini.js)
+  function exportarExcel() {
+    if (!cacheOcorr.length) return toast("Clique em “Atualizar” para carregar as ocorrências antes de exportar.", "erro");
+    if (!window.MiniXLSX) return toast("Gerador de planilha não carregado. Atualize a página (Ctrl+F5).", "erro");
+    const lista = filtrados(); const h = hoje(); const D = (iso) => (iso ? { d: iso } : "");
+    const oc = [["Nº", "Filial", "Data", "Ano", "Mês", "Hora", "Nome", "Matrícula", "Função", "Local/setor", "Líder", "Característica", "Com afastamento", "Ocorrência", "Reincidente",
+      "Partes do corpo", "Lado", "Natureza da lesão", "Dias perdidos", "Dias debitados", "Data retorno", "CAT",
+      "Atividade normal", "Primeiro desvio", "Intervenções", "Evento", "Mecanismo", "Consequência", "Descrição do fato",
+      "Causa imediata", "Causas contribuintes", "Falha de controle", "Causa raiz", "Situação causa raiz",
+      "Fatores Ishikawa", "Ações (total)", "Ações concluídas", "Ações vencidas", "Eficácia", "Erros checagem", "Alertas checagem"]];
+    const ac = [["Nº", "Filial", "Data ocorrência", "Tipo", "Item", "O quê", "Quem", "Prazo", "Status", "Causa tratada", "Nível de controle", "Vencida"]];
+    const ish = [["Nº", "Filial", "Data ocorrência", "Categoria", "Fator", "Classificação"]];
+    const pq = [["Nº", "Filial", "Cadeia", "Tipo de cadeia", "Ponto de partida", "Nível", "Resposta", "Evidência", "Causa encontrada"]];
+    lista.forEach(({ d }) => {
+      const dd = d.dados || {}; const af = d.afastamento || {}; const fil = filialDe(d); const dt = dataDe(d);
+      const plano = (d.plano || []).filter((a) => (a.oque || "").trim());
+      const salvoInv = inv; inv = d; const chk = regras(); inv = salvoInv;
+      oc.push([d.numero, fil, D(dt), dt ? +dt.slice(0, 4) : "", dt ? +dt.slice(5, 7) : "", dd.hora, dd.nome, dd.matricula, dd.funcao, dd.local, dd.lider,
+        d.caracteristica, ehCPT(d) ? "Sim" : "Não", d.ocorrencia, dd.reincidente,
+        ((d.lesoes || {}).partes || []).join(", "), (d.lesoes || {}).lado, (d.lesoes || {}).natureza, num(af.diasPerdidos), num(af.diasDebitados), D(af.dataRetorno), af.cat,
+        d.relato.atividade, d.relato.primeiroDesvio, d.relato.intervencoes, d.relato.evento, d.relato.mecanismo, d.relato.consequencia, d.descricao,
+        d.classificacao.causaImediata, d.classificacao.contribuintes, d.classificacao.falhaControle, d.classificacao.causaRaiz,
+        { fechada: "Fechada com evidência", confirmar: "Necessita confirmação" }[d.classificacao.statusCausaRaiz] || "",
+        Object.keys((d.ishikawa || {}).itens || {}).map((k) => k.replace("|", ": ")).join("; "),
+        plano.length, plano.filter((a) => a.status === "Concluído").length, plano.filter((a) => a.status !== "Concluído" && a.quando && a.quando < h).length,
+        d.parecer && d.parecer.eficaz ? { eficaz: "Eficaz", parcial: "Parcial", ineficaz: "Não eficaz" }[d.parecer.eficaz] : "Pendente",
+        chk.filter((x) => x.nivel === "erro").length, chk.filter((x) => x.nivel === "alerta").length]);
+      [["Imediata", d.acoesImediatas || []], ["Plano de ação", d.plano || []]].forEach(([tipo, l]) => l.filter((a) => (a.oque || "").trim()).forEach((a, i) =>
+        ac.push([d.numero, fil, D(dt), tipo, i + 1, a.oque, a.quem, D(a.quando), a.status, a.causa || "", a.hierarquia || "",
+          a.status !== "Concluído" && a.quando && a.quando < h ? "Sim" : "Não"])));
+      Object.entries((d.ishikawa || {}).itens || {}).forEach(([k, v]) => { const [c, f] = k.split("|"); ish.push([d.numero, fil, D(dt), c, f, EVID_TXT[v] || v]); });
+      Object.entries((d.ishikawa || {}).outros || {}).filter(([, v]) => v).forEach(([c, v]) => ish.push([d.numero, fil, D(dt), c, v, "Outro (texto livre)"]));
+      (d.cadeias || []).forEach((c, ci) => (c.porques || []).forEach((p, pi) => { if ((p.resposta || "").trim()) pq.push([d.numero, fil, String.fromCharCode(65 + ci), c.tipo, c.causa, pi + 1, p.resposta, EVID_TXT[p.status] || "", c.causaRaiz]); }));
+    });
+
+    // Taxas com fórmulas (recalculam no Excel se o HHT for alterado na planilha)
+    const anos = [...new Set(cacheOcorr.map((x) => dataDe(x.d).slice(0, 4)).filter(Boolean).concat(Object.keys(hht)))].sort();
+    const tx = [["Ano", "Mês", "Filial", "HHT", "Acidentes c/ afastamento", "Acidentes s/ afastamento", "Dias perdidos", "Dias debitados", "TF c/ afastamento", "TF s/ afastamento", "TG"]];
+    anos.forEach((ano) => FILIAIS.forEach((f) => MESES.forEach((m, i) => {
+      const mm = String(i + 1).padStart(2, "0"); const r = tx.length + 1;
+      const doMes = cacheOcorr.map((x) => x.d).filter((d) => dataDe(d).startsWith(`${ano}-${mm}`) && filialDe(d) === f);
+      const hv = hht[ano] && hht[ano][f] && hht[ano][f][mm];
+      tx.push([+ano, i + 1, f, hv ? num(hv) : "", doMes.filter(ehCPT).length, doMes.filter(ehSPT).length,
+        doMes.reduce((s, d) => s + num((d.afastamento || {}).diasPerdidos), 0), doMes.reduce((s, d) => s + num((d.afastamento || {}).diasDebitados), 0),
+        { f: `IF(N(D${r})>0,E${r}*1000000/D${r},"")` }, { f: `IF(N(D${r})>0,F${r}*1000000/D${r},"")` }, { f: `IF(N(D${r})>0,(G${r}+H${r})*1000000/D${r},"")` }]);
+    })));
+    const n = tx.length; const rg = (c) => `Taxas!$${c}$2:$${c}$${n}`;
+    const res = [["Ano", "HHT", "Acidentes c/ afastamento", "Acidentes s/ afastamento", "Dias perdidos + debitados", "TF c/ afastamento", "TF s/ afastamento", "TG"]];
+    anos.forEach((a) => { const r = res.length + 1; const cond = (c) => `SUMIFS(${rg(c)},${rg("A")},A${r},${rg("D")},">0")`;
+      res.push([+a, { f: `SUMIFS(${rg("D")},${rg("A")},A${r})` }, { f: cond("E") }, { f: cond("F") }, { f: `${cond("G")}+${cond("H")}` },
+        { f: `IF(B${r}>0,C${r}*1000000/B${r},"")` }, { f: `IF(B${r}>0,D${r}*1000000/B${r},"")` }, { f: `IF(B${r}>0,E${r}*1000000/B${r},"")` }]); });
+    const obs = [["Observações"], ["Taxas conforme NBR 14280: TF = nº de acidentados × 1.000.000 ÷ HHT; TG = (dias perdidos + dias debitados) × 1.000.000 ÷ HHT."],
+      ["Na aba Resumo anual, entram no cálculo apenas os meses com HHT lançado (mesmo critério do Painel)."],
+      ["Filtros aplicados nas abas Ocorrências, Ações, Ishikawa e Porquês: " + [$("#filtro-ano").value || "todos os anos", $("#filtro-filial").value || "todas as filiais", $("#filtro-tipo").value || "todas as características", $("#filtro-texto").value ? "busca: " + $("#filtro-texto").value : ""].filter(Boolean).join(" · ")],
+      ["As abas Taxas e Resumo anual consideram todas as ocorrências gravadas."], ["Gerado em " + new Date().toLocaleString("pt-BR")]];
+    MiniXLSX.download(`DSST-indicadores-${hoje()}.xlsx`, [
+      { name: "Ocorrências", rows: oc, cols: [10, 10, 11, 6, 5, 6, 26, 10, 18, 16, 16, 22, 10, 34, 9, 18, 9, 16, 9, 9, 11, 8, 30, 30, 30, 30, 30, 30, 50, 30, 30, 30, 30, 18, 40, 8, 8, 8, 10, 8, 8] },
+      { name: "Ações", rows: ac, cols: [10, 10, 11, 13, 5, 50, 22, 11, 18, 16, 22, 8] },
+      { name: "Ishikawa", rows: ish, cols: [10, 10, 11, 14, 40, 20] },
+      { name: "Porquês", rows: pq, cols: [10, 10, 7, 26, 40, 6, 50, 20, 40] },
+      { name: "Taxas", rows: tx, cols: [6, 5, 10, 12, 14, 14, 12, 12, 14, 14, 12] },
+      { name: "Resumo anual", rows: res, cols: [6, 14, 14, 14, 16, 14, 14, 12] },
+      { name: "Leia-me", rows: obs, cols: [120], header: false }
+    ]);
+    toast("Planilha gerada.", "ok");
   }
 
   // ------------------------------------------------------------------ impressão (layout DSST)
@@ -763,12 +983,13 @@
       ${titulo("Ocorrência:")}<table class="p-t"><tr><td>${esc(d.ocorrencia)}</td></tr></table>
       ${titulo("Dados da Ocorrência:")}
       <table class="p-t"><tr><td colspan="2">Nome: ${esc(dd.nome)}</td></tr><tr><td colspan="2">Matrícula: ${esc(dd.matricula)}</td></tr>
-        <tr><td colspan="2">Função: ${esc(dd.funcao)}</td></tr><tr><td>Local: ${esc(dd.local)}</td><td>Líder: ${esc(dd.lider)}</td></tr>
+        <tr><td>Função: ${esc(dd.funcao)}</td><td>Filial: ${esc(dd.filial)}</td></tr><tr><td>Local: ${esc(dd.local)}</td><td>Líder: ${esc(dd.lider)}</td></tr>
         <tr><td>Data: ${dataBR(dd.data)}</td><td>Hora: ${esc(dd.hora)}</td></tr>
         <tr><td colspan="2">Reincidente: &nbsp; (${x(dd.reincidente === "Sim")}) Sim &nbsp; (${x(dd.reincidente === "Não")}) Não</td></tr></table>
       ${titulo("Descrição do Fato:")}<table class="p-t"><tr><td class="just">${nl2br(d.descricao)}</td></tr></table>
       ${d.fotos.length ? titulo("Fotos:") + `<div class="p-fotos">${d.fotos.filter((f) => f.dataUrl).map((f) => `<figure><img src="${f.dataUrl}"><figcaption>${esc(f.legenda)}</figcaption></figure>`).join("")}</div>` : ""}
-      ${titulo("Lesões no Corpo Humano:")}<table class="p-t"><tr><td>${esc(lesoes) || "&nbsp;"}</td></tr></table>
+      ${titulo("Lesões no Corpo Humano:")}<table class="p-t"><tr><td colspan="4">${esc(lesoes) || "&nbsp;"}</td></tr>
+        <tr><td>Dias perdidos: ${esc((d.afastamento || {}).diasPerdidos)}</td><td>Dias debitados: ${esc((d.afastamento || {}).diasDebitados)}</td><td>Retorno: ${dataBR((d.afastamento || {}).dataRetorno)}</td><td>CAT: ${esc((d.afastamento || {}).cat)}</td></tr></table>
       ${titulo("Diagrama de causa e efeito:")}
       <table class="p-t p-ishi"><tr><th>Mão de obra</th><th>Máquina</th><th>Meio ambiente</th><th>Efeito</th></tr>
         <tr><td>${ishi("Mão de obra")}</td><td>${ishi("Máquina")}</td><td>${ishi("Meio ambiente")}</td><td rowspan="3" class="c"><b>${nl2br(d.ishikawa.efeito)}</b></td></tr>
@@ -809,7 +1030,8 @@
       numero: "EXEMPLO",
       caracteristica: "Acidente sem afastamento",
       ocorrencia: "Prensamento com corte no dedo mínimo da mão direita",
-      dados: { nome: "Colaborador (exemplo)", matricula: "00000", funcao: "Auxiliar de produção", local: "Cura Frio", lider: "Líder do setor", data: "2026-09-22", hora: "16:10", reincidente: "Não" },
+      afastamento: { diasPerdidos: "0", diasDebitados: "0", dataRetorno: "", cat: "" },
+      dados: { nome: "Colaborador (exemplo)", matricula: "00000", funcao: "Auxiliar de produção", filial: "Filial 01", local: "Cura Frio", lider: "Líder do setor", data: "2026-09-22", hora: "16:10", reincidente: "Não" },
       relato: {
         atividade: "Movimentação manual de carrinho contendo o modelo na linha de pintura (Cura Frio), com deslocamento do carrinho até o rolouver",
         primeiroDesvio: "O carrinho com o modelo travou durante o deslocamento",
@@ -889,7 +1111,9 @@
     $("#btn-pdf").onclick = imprimir;
     $("#btn-salvar").onclick = salvar;
     $("#btn-atualizar").onclick = carregarPainel;
-    ["filtro-texto", "filtro-ano", "filtro-tipo"].forEach((id) => $("#" + id).addEventListener("input", desenharPainel));
+    ["filtro-texto", "filtro-ano", "filtro-tipo", "filtro-filial"].forEach((id) => $("#" + id).addEventListener("input", () => cacheOcorr.length && desenharPainel()));
+    $("#btn-hht").onclick = abrirHHT;
+    $("#btn-excel").onclick = exportarExcel;
     $("#painel-conteudo").addEventListener("click", (e) => { const b = e.target.closest("[data-abrir]"); if (b) { e.preventDefault(); abrir(b.dataset.abrir); } });
     $("#btn-cfg-salvar").onclick = () => {
       LS.set("dsst_cfg", JSON.stringify({ owner: $("#cfg-owner").value.trim(), repo: $("#cfg-repo").value.trim(), branch: $("#cfg-branch").value.trim() || "main", pasta: $("#cfg-pasta").value.trim() || "dados" }));
@@ -907,7 +1131,7 @@
     ligarFormulario(); ligarAssinatura();
 
     const r = LS.get("dsst_rascunho");
-    if (r) { try { inv = Object.assign(novoRelatorio(), JSON.parse(r)); sujo = true; } catch (e) { /* */ } }
+    if (r) { try { inv = mesclar(JSON.parse(r)); sujo = true; } catch (e) { /* */ } }
     render();
     if (r) toast("Rascunho recuperado deste navegador.");
   }

@@ -26,12 +26,24 @@ Roda no GitHub Pages e grava cada relatório como arquivo JSON (e as fotos como 
   Ele não é modelo de causa para outras ocorrências.
 - Rascunho guardado automaticamente no navegador até ser salvo.
 
+## Indicadores (aba Painel)
+
+- **Filtros:** ano, filial, característica e busca por texto.
+- **Cartões:** ocorrências, com/sem afastamento, dias perdidos + debitados, ações abertas/vencidas/concluídas, eficácia pendente.
+- **Taxas NBR 14280 por mês e acumulado do ano:** TF com afastamento, TF sem afastamento e TG.
+  Dependem das **horas-homem trabalhadas (HHT)**, lançadas no botão **Lançar HHT** (por filial e mês; ficam gravadas em `dados/hht.json`).
+  Mês sem HHT não tem taxa calculada.
+- **Gráficos:** ocorrências por mês, característica, filial, local/setor, parte do corpo, natureza da lesão, fatores e categorias do Ishikawa, ações por status e por nível de controle.
+- **Exportar para Excel:** abas Ocorrências, Ações, Ishikawa, Porquês, Taxas (com fórmulas), Resumo anual e Leia-me.
+- **Filial:** sugerida automaticamente pela matrícula (começa com 03 = Filial 03; começa com 2 = Filial 02; demais = Filial 01). Pode ser alterada manualmente.
+
 ## Estrutura dos dados no repositório
 
 ```
 dados/
   ocorrencias/2026-001.json
   fotos/2026-001/foto-<data>-1.jpg
+  hht.json   (horas-homem trabalhadas por filial e mês)
 ```
 
 Cada salvamento gera um commit — o histórico do Git funciona como trilha de auditoria (quem alterou e quando).
